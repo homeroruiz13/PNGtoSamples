@@ -60,10 +60,10 @@ def create_pdf(image_path, height_ft, label, width_ft=2, dpi=1200, double_blade=
         img = Image.open(enhanced_image_path).convert("RGB")
         img_width, img_height = img.size
         
-        # Calculate scaling factor based on the original tile width (without extension)
-        # This ensures the image is scaled properly first
-        scale_factor = tile_width_points / img_width
-        new_width = tile_width_points
+        # Calculate scaling factor based on the extended tile width to eliminate white space
+        # This ensures the image is scaled to fill the entire extended width
+        scale_factor = extended_tile_width / img_width
+        new_width = int(extended_tile_width)  # Convert to integer for PIL
         new_height = int(img_height * scale_factor)
         
         # Resize image using high-quality resampling
@@ -89,14 +89,13 @@ def create_pdf(image_path, height_ft, label, width_ft=2, dpi=1200, double_blade=
         y_position = 0
         for _ in range(tile_count):
             # Draw with best quality settings available
-            # Center the image within the extended tile
-            x_offset = HORIZONTAL_EXTENSION_POINTS
-            c.drawImage(img_reader, x_offset, y_position, width=new_width, height=new_height, 
-                         preserveAspectRatio=True, mask='auto')
+            # Place image at the edge (no x_offset needed since image is already sized correctly)
+            c.drawImage(img_reader, 0, y_position, width=new_width, height=new_height, 
+                        preserveAspectRatio=True, mask='auto')
             
             if double_blade:
-                # For double blade, place the second image with proper spacing and extension
-                second_image_x = extended_tile_width + spacing_points + HORIZONTAL_EXTENSION_POINTS
+                # For double blade, place the second image with proper spacing
+                second_image_x = extended_tile_width + spacing_points
                 c.drawImage(img_reader, second_image_x, y_position, 
                            width=new_width, height=new_height, 
                            preserveAspectRatio=True, mask='auto')
@@ -163,12 +162,12 @@ def overlay_footer(base_pdf_path, height_ft, label, double_blade=False, spacing_
             base_page = base_pdf[page_num]
             base_rect = base_page.rect
 
-            # Calculate tile width including extensions
+            # Calculate extended tile width
             extended_tile_width = (base_rect.width - spacing_points) / 2 if double_blade else base_rect.width
-            original_tile_width = extended_tile_width - (2 * HORIZONTAL_EXTENSION_POINTS)
             
-            # Scale footer width to fit the original tile width (without extensions)
-            footer_height = footer_pixmap.height * (original_tile_width / footer_pixmap.width)  # Maintain aspect ratio
+            # Calculate the width for the footer (should match the image width without overlay issues)
+            footer_width = extended_tile_width
+            footer_height = footer_pixmap.height * (footer_width / footer_pixmap.width)  # Maintain aspect ratio
 
             # Place footer at the very bottom of the page
             y1 = base_rect.height  # Bottom of the page
@@ -176,31 +175,29 @@ def overlay_footer(base_pdf_path, height_ft, label, double_blade=False, spacing_
 
             # Overlay single footer for standard PDFs
             if not double_blade:
-                # Position footer with the same horizontal extension as the image
-                x_offset = HORIZONTAL_EXTENSION_POINTS
-                base_page.insert_image(fitz.Rect(x_offset, y0, x_offset + original_tile_width, y1), 
+                # Place footer at the same position as the image (no offset)
+                base_page.insert_image(fitz.Rect(0, y0, footer_width, y1), 
                                      filename=footer_image_path)
                 
-                # Add design name text - position set to middle of previous attempts with slight adjustment
-                text_x = x_offset + original_tile_width * 0.77
-                text_y = y1 - footer_height * 0.54  # Moved slightly down from 0.55
+                # Add design name text - position set to match the "design" text in footer
+                text_x = footer_width * 0.77
+                text_y = y1 - footer_height * 0.54  # Adjusted for better positioning
                 add_text_to_page(base_page, design_name, text_x, text_y, fontsize=12)
                 
             else:
-                # For double-blade PDFs, overlay two footers on each tile with proper extensions
-                left_x_offset = HORIZONTAL_EXTENSION_POINTS
-                right_x_offset = extended_tile_width + spacing_points + HORIZONTAL_EXTENSION_POINTS
+                # For double-blade PDFs, overlay two footers on each tile with proper spacing
+                left_x = 0
+                right_x = extended_tile_width + spacing_points
                 
-                x0_left, x1_left = left_x_offset, left_x_offset + original_tile_width
-                x0_right, x1_right = right_x_offset, right_x_offset + original_tile_width
-
-                base_page.insert_image(fitz.Rect(x0_left, y0, x1_left, y1), filename=footer_image_path)
-                base_page.insert_image(fitz.Rect(x0_right, y0, x1_right, y1), filename=footer_image_path)
+                base_page.insert_image(fitz.Rect(left_x, y0, left_x + footer_width, y1), 
+                                      filename=footer_image_path)
+                base_page.insert_image(fitz.Rect(right_x, y0, right_x + footer_width, y1), 
+                                      filename=footer_image_path)
                 
-                # Add design name text on both footers - position adjusted slightly lower
-                text_x_left = x0_left + original_tile_width * 0.77
-                text_x_right = x0_right + original_tile_width * 0.77
-                text_y = y1 - footer_height * 0.53  # Moved slightly down from 0.55
+                # Add design name text on both footers
+                text_x_left = left_x + footer_width * 0.77
+                text_x_right = right_x + footer_width * 0.77
+                text_y = y1 - footer_height * 0.53  # Slightly adjusted
                 
                 add_text_to_page(base_page, design_name, text_x_left, text_y, fontsize=12)
                 add_text_to_page(base_page, design_name, text_x_right, text_y, fontsize=12)
